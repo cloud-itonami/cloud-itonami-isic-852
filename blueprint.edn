@@ -1,0 +1,12 @@
+[{:itonami.blueprint/id "cloud-itonami-isic-852"
+  :itonami.blueprint/name "Secondary Education"
+  :itonami.blueprint/isic-rev4 "852"
+  :itonami.blueprint/domain :services/secondary-education
+  :itonami.blueprint/license "AGPL-3.0-or-later"
+  :itonami.blueprint/social-impact [:student-safety :administrative-coordination :family-engagement :equitable-access]
+  :itonami.blueprint/governor :secondaryops-governor
+  :itonami.blueprint/robotics false
+  :itonami.blueprint/required-technologies [:identity :forms :dmn :bpmn :audit-ledger]
+  :itonami.blueprint/status :public-oss
+  :itonami.blueprint/maturity :implemented
+  :db/id -1}]
