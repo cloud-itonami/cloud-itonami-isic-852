@@ -1,5 +1,9 @@
 (ns secondaryops.store-contract-test
-  "Contract tests for `secondaryops.store/Store` protocol."
+  "Contract tests for `secondaryops.store/Store` protocol -- the MemStore-only
+  tests below predate `DatomicStore`; the `backends` helper + parity tests
+  at the bottom prove both backends satisfy the SAME protocol contract,
+  the same pattern `cloud-itonami-isic-7810`'s
+  `employmentops.store-contract-test` uses."
   (:require [clojure.test :refer [deftest is testing]]
             [secondaryops.store :as store]))
 
@@ -78,3 +82,42 @@
           (is (= (count ledger-after-1) (dec (count ledger-after-2))))
           (is (every? #(some (fn [x] (= x %)) ledger-after-2) ledger-after-1)
               "all prior facts must still be present"))))))
+
+;; ----------------------------- backend parity (MemStore vs DatomicStore) -----------------------------
+
+(defn- backends []
+  [["MemStore" (store/seed-db)] ["DatomicStore" (store/datomic-seed-db)]])
+
+(deftest read-parity
+  (doseq [[label s] (backends)]
+    (testing label
+      (is (= "Aiko Yamada" (:name (store/student s "student-1"))))
+      (is (true? (:registered? (store/student s "student-1"))))
+      (is (true? (:verified? (store/student s "student-1"))))
+      (is (false? (:verified? (store/student s "student-3"))) "student-3 is registered but unverified")
+      (is (nil? (store/student s "no-such-student")))
+      (is (= ["student-1" "student-2" "student-3"] (mapv :student-id (store/all-students s))))
+      (is (= [] (store/ledger s)))
+      (is (= [] (store/coordination-log s))))))
+
+(deftest write-and-ledger-parity
+  (doseq [[label s] (backends)]
+    (testing label
+      (testing "commit-record! appends to coordination-log"
+        (store/commit-record! s {:op :log-attendance-note :student-id "student-1" :value {:meal "lunch"}})
+        (is (= 1 (count (store/coordination-log s))))
+        (is (= "student-1" (:student-id (first (store/coordination-log s))))))
+      (testing "append-ledger! is append-only and order-preserving"
+        (store/append-ledger! s {:op :a :disposition :commit})
+        (store/append-ledger! s {:op :b :disposition :hold})
+        (is (= [:commit :hold] (mapv :disposition (store/ledger s))))))))
+
+(deftest datomic-empty-store-is-usable
+  (let [s (store/datomic-store)]
+    (is (nil? (store/student s "nope")))
+    (is (= [] (store/all-students s)))
+    (is (= [] (store/ledger s)))
+    (is (= [] (store/coordination-log s)))
+    (store/with-students s {"x" {:student-id "x" :name "New Student" :grade "1A"
+                                 :registered? true :verified? false}})
+    (is (= "New Student" (:name (store/student s "x"))))))
