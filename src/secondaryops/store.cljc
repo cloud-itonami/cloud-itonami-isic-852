@@ -27,7 +27,21 @@
 
   The ledger stays append-only: which student a proposal targeted, which
   operation, on what basis, committed/held/escalated and approved by
-  whom is always a query over an immutable log.")
+  whom is always a query over an immutable log.
+
+  `DatomicStore` -- backed by `langchain.db`, a Datomic-API-compatible EAV
+  store (datalog q / pull / upsert). Pure `.cljc`, so it runs offline AND
+  can be pointed at a real Datomic Local or a kotoba-server pod by
+  swapping `langchain.db`'s `:db-api` (see `langchain.kotoba-db`) -- the
+  same seam `cloud-itonami-isic-7810`'s `employmentops.store` and every
+  other flagship-tier sibling actor's store uses. Both backends satisfy
+  the SAME `Store` protocol and pass the same contract
+  (`test/secondaryops/store_contract_test.clj`), which is the whole
+  point: the actor, `secondaryops.governor` and the audit ledger never
+  know which SSoT they run on."
+  (:require #?(:clj  [clojure.edn :as edn]
+               :cljs [cljs.reader :as edn])
+            [langchain.db :as d]))
 
 (defprotocol Store
   (student [s student-id] "Registered student record, or nil.
@@ -79,3 +93,73 @@
   (an unregistered-everywhere store)."
   [students]
   (->MemStore (atom {:students (or students {}) :ledger [] :coordination-log []})))
+
+;; ----------------------------- DatomicStore (langchain.db) -----------------------------
+
+(def ^:private schema
+  "DataScript/Datomic-style schema: only constraint attrs are declared.
+  Map/compound values (coordination-proposal records, ledger facts) are
+  stored as EDN strings so `langchain.db` doesn't expand them into
+  sub-entities -- the same convention every sibling actor's store uses."
+  {:student/id               {:db/unique :db.unique/identity}
+   :ledger/seq               {:db/unique :db.unique/identity}
+   :coordination-record/seq  {:db/unique :db.unique/identity}})
+
+(defn- enc [v] (pr-str v))
+(defn- dec* [s] (when s (edn/read-string s)))
+
+(defn- student->tx [{:keys [student-id name grade registered? verified?]}]
+  (cond-> {:student/id student-id}
+    name                   (assoc :student/name name)
+    grade                  (assoc :student/grade grade)
+    (some? registered?)    (assoc :student/registered? registered?)
+    (some? verified?)      (assoc :student/verified? verified?)))
+
+(def ^:private student-pull
+  [:student/id :student/name :student/grade :student/registered? :student/verified?])
+
+(defn- pull->student [m]
+  (when (:student/id m)
+    {:student-id (:student/id m) :name (:student/name m) :grade (:student/grade m)
+     :registered? (boolean (:student/registered? m)) :verified? (boolean (:student/verified? m))}))
+
+(defrecord DatomicStore [conn]
+  Store
+  (student [_ student-id]
+    (pull->student (d/pull (d/db conn) student-pull [:student/id student-id])))
+  (all-students [_]
+    (->> (d/q '[:find [?id ...] :where [?e :student/id ?id]] (d/db conn))
+         (map #(pull->student (d/pull (d/db conn) student-pull [:student/id %])))
+         (sort-by :student-id)))
+  (ledger [_]
+    (->> (d/q '[:find ?s ?f :where [?e :ledger/seq ?s] [?e :ledger/fact ?f]] (d/db conn))
+         (sort-by first)
+         (mapv (comp dec* second))))
+  (coordination-log [_]
+    (->> (d/q '[:find ?s ?r :where [?e :coordination-record/seq ?s] [?e :coordination-record/record ?r]] (d/db conn))
+         (sort-by first)
+         (mapv (comp dec* second))))
+  (commit-record! [s record]
+    (d/transact! conn [{:coordination-record/seq (count (coordination-log s))
+                        :coordination-record/record (enc record)}])
+    record)
+  (append-ledger! [s fact]
+    (d/transact! conn [{:ledger/seq (count (ledger s)) :ledger/fact (enc fact)}])
+    fact)
+  (with-students [s students]
+    (when (seq students) (d/transact! conn (mapv student->tx (vals students))))
+    s))
+
+(defn datomic-store
+  "A DatomicStore (langchain.db backend) seeded from `students`
+  (student-id string -> student map); empty when omitted."
+  ([] (datomic-store {}))
+  ([students]
+   (let [s (->DatomicStore (d/create-conn schema))]
+     (with-students s students))))
+
+(defn datomic-seed-db
+  "A DatomicStore seeded with the demo student directory -- the Datomic-
+  backed analog of `seed-db`, used to prove protocol parity."
+  []
+  (datomic-store (:students (demo-data))))
