@@ -65,7 +65,7 @@ portfolio-uniform range used by the HR/CRM/recruiting flagships.
 
 **Subscribe (2026-07-23)**: a live Stripe Payment Link for the Managed
 School Ops (Starter) tier (¥25,000/月 flat) is available now —
-[**subscribe to Managed School Ops — Starter**](STRIPE_PAYMENT_LINK_PLACEHOLDER).
+[**subscribe to Managed School Ops — Starter**](https://buy.stripe.com/aFaeVc88rg8gaGI5c3bMQ0m).
 This is a no-code Stripe-hosted checkout; nothing in this repo's actor code
 changed. After subscribing, contact gftdcojp via an [operator-interest
 issue](https://github.com/cloud-itonami/cloud-itonami-isic-852/issues/new?template=operator-interest.yml)
