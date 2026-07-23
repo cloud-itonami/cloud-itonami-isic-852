@@ -39,10 +39,13 @@ Publish: enable GitHub Pages on `main` `/docs`, or any static host.
 - Likely source path: `secondaryops.governor.cljc`
 - Pattern: advise → govern → phase-gate → commit | escalate | hold (itonami actor / ADR-2607011000)
 
-## 5. Claim / go-live
+## 5. Production posture
 
-- Free claim funnel: https://itonami.cloud/isco-1212/
-- Paid path docs: https://itonami.cloud/docs/go-live.md
+- Swap `MemStore` for `DatomicStore` (contract parity proven by
+  `store_contract_test`) pointed at your Datomic Local / kotoba-server.
+- Export the audit ledger on a schedule: it is your evidence trail for
+  a district/board review of any commit, hold or escalation.
+- Managed hosting / go-live pricing: `docs/business-model.md`.
 - Blueprint: `blueprint.edn`
 
 ## Constraints
